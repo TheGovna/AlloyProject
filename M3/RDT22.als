@@ -1,13 +1,24 @@
-module project/m3
+module project/m22
 open util/ordering [State]
 
-abstract sig Response {}
-one sig ACK, NAK extends Response {}
+abstract sig Corruptitude {}
+one sig Corrupt, Saintly extends Corruptitude {}
+
+one sig Response {
+	isCorrupt: lone Corruptitude
+	seqNum: one SequenceNumber
+}
+//one sig ACK, NAK extends Response {}
 
 abstract sig CheckSum {}
 one sig Correct, Error extends CheckSum {}
 
-sig Packet {}
+abstract sig SequenceNumber {}
+one sig Zewo, Wun extends SequenceNumber {}
+
+sig Packet {
+	seqNum: one SequenceNumber
+}
 
 sig State {
 	senderData: set Packet,
@@ -25,7 +36,9 @@ sig State {
 pred State.Init[] {
 	no this.receiverData
 	this.senderData = Packet
-	this.response = ACK
+	this.response = Response
+	this.response.seqNum = Zewo
+	this.response.isCorrupt = Saintly
 	no this.sentPacket
 	no this.checkSum
 	no this.tempSentPacket
@@ -34,7 +47,8 @@ pred State.Init[] {
 pred State.End[] {
 	no this.senderData and no this.sentPacket
 	all p:Packet | p in this.receiverData
-	this.response = ACK
+	this.response = Response
+	this.response.isCorrupt = Saintly
 }
 run End for exactly 1 State, exactly 3 Packet
 
@@ -43,38 +57,58 @@ pred Step[s, s': State] {
 }
 
 pred populateSentPacket[s, s': State] {
-	s.response = ACK => {
-		one p : s.senderData | 
-			s'.tempSentPacket = p and
-			s'.sentPacket = p and
-			s'.senderData = s.senderData - p and
-			s'.receiverData = s.receiverData and
-			one c: CheckSum | s'.checkSum = c
-	}
-	else {
-		s'.sentPacket = s.tempSentPacket and
-		s'.senderData = s.senderData and
+	s.response.isCorrupt = Saintly => 
+		sendNextPacket[s,s']
+	else
+		resendCorruptAck[s,s']
+}
+
+pred sendNextPacket[s,s': State] {
+	one p : s.senderData | 
+		s'.sentPacket.seqNum = nextSequence[s.sentPacket.seqNum] and
+		s'.tempSentPacket = p and
+		s'.sentPacket = p and
+		s'.senderData = s.senderData - p and
 		s'.receiverData = s.receiverData and
 		one c: CheckSum | s'.checkSum = c
-	}
+}
+
+fun nextSequence[s:SequenceNumber] : SequenceNumber {
+	s = Zewo => 
+		Wun
+	else
+		Zewo
+}
+
+pred resendCorruptAck[s, s': State] {
+	s'.sentPacket = s.tempSentPacket and
+	s'.senderData = s.senderData and
+	s'.receiverData = s.receiverData and
+	one c: CheckSum | s'.checkSum = c
 }
 
 pred extractSentPacket[s, s': State] {
-	s.checkSum = Correct => {
-		s'.receiverData = s.receiverData + s.sentPacket and
-		no s'.sentPacket and
-		s'.senderData = s.senderData and
-		no s'.checkSum and
-		no s'.tempSentPacket and
-		s'.response = ACK
-	}
-	else {
-		no s'.sentPacket and
-		no s'.checkSum and
-		s'.receiverData = s.receiverData and
-		s'.senderData = s.senderData and
-		s'.response = NAK
-	}
+	s.checkSum = Correct =>
+		correctChecksum[s,s']
+	else
+		incorrectChecksum[s,s']
+}
+
+pred correctChecksum[s,s': State] {
+	s'.receiverData = s.receiverData + s.sentPacket and
+	no s'.sentPacket and
+	s'.senderData = s.senderData and
+	no s'.checkSum and
+	no s'.tempSentPacket and
+	s'.response = ACK
+}
+
+pred incorrectChecksum[s,s':State] {
+	no s'.sentPacket and
+	no s'.checkSum and
+	s'.receiverData = s.receiverData and
+	s'.senderData = s.senderData and
+	s'.response = NAK
 }
 
 pred Trace {
