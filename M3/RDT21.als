@@ -87,6 +87,7 @@ fun nextSequence[s:SequenceNumber] : SequenceNumber {
 
 pred resendCorruptAck[s, s': State] {
 	s'.sentPacket = s.tempSentPacket and
+	s'.tempSentPacket = s.tempSentPacket and
 	s'.senderData = s.senderData and
 	s'.receiverData = s.receiverData and
 	one c: CheckSum | s'.checkSum = c

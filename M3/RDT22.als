@@ -44,7 +44,6 @@ pred State.Init[] {
 	no this.tempSentPacket
 }
 
-
 pred State.End[] {
 	no this.senderData and no this.sentPacket
 	all p:Packet | p in this.receiverData
@@ -56,7 +55,7 @@ pred Step[s, s': State] {
 }
 
 pred populateSentPacket[s, s': State] {
-	s.response = ACK => 
+	(s.response = ACK and s.response.seqNum = s.tempSentPacket.seqNum) => 
 		sendNextPacket[s,s']
 	else
 		resendCorruptAck[s,s']
@@ -90,6 +89,7 @@ fun nextSequence[s:SequenceNumber] : SequenceNumber {
 
 pred resendCorruptAck[s, s': State] {
 	s'.sentPacket = s.tempSentPacket and
+	s'.tempSentPacket = s.tempSentPacket and
 	s'.senderData = s.senderData and
 	s'.receiverData = s.receiverData and
 	one c: CheckSum | s'.checkSum = c
@@ -117,6 +117,7 @@ pred correctChecksum[s,s': State] {
 	s'.senderData = s.senderData and
 	s'.tempSentPacket = s.tempSentPacket and
 	no s'.checkSum and
+	s'.response.seqNum = s.tempSentPacket.seqNum and
 	(s'.response = ACK or
 	s'.response = ACKCorrupt)
 }
@@ -134,9 +135,8 @@ pred incorrectChecksum[s,s':State] {
 	s'.tempSentPacket = s.tempSentPacket and
 	no s'.checkSum and
 	s'.receiverData = s.receiverData and
-	s'.senderData = s.senderData and
-	(s'.response = NAK or
-	s'.response = NAKCorrupt)
+	s'.response.seqNum = s.tempSentPacket.seqNum and
+	s'.senderData = s.senderData
 }
 
 pred TestIncorrectChecksum[] {
