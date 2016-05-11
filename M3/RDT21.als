@@ -92,6 +92,15 @@ pred resendCorruptAck[s, s': State] {
 	one c: CheckSum | s'.checkSum = c
 }
 
+pred TestresendCorruptAck[] {
+	first.Init
+	sendNextPacket[first,first.next]
+	incorrectChecksum[first.next, first.next.next]
+	resendCorruptAck[first.next.next, first.next.next.next]
+}
+
+run TestresendCorruptAck for exactly 4 State, exactly 2 Packet 
+
 pred extractSentPacket[s, s': State] {
 	s.checkSum = Correct =>
 		correctChecksum[s,s']
@@ -103,19 +112,37 @@ pred correctChecksum[s,s': State] {
 	s'.receiverData = s.receiverData + s.sentPacket and
 	no s'.sentPacket and
 	s'.senderData = s.senderData and
+	s'.tempSentPacket = s.tempSentPacket and
 	no s'.checkSum and
-	s'.response = ACK or
-	s'.response = ACKCorrupt
+	(s'.response = ACK or
+	s'.response = ACKCorrupt)
 }
+
+pred TestCorrectChecksum[] {
+	first.Init
+	sendNextPacket[first,first.next]
+	correctChecksum[first.next, first.next.next]
+}
+
+run TestCorrectChecksum for exactly 3 State, exactly 2 Packet 
 
 pred incorrectChecksum[s,s':State] {
 	no s'.sentPacket and
+	s'.tempSentPacket = s.tempSentPacket and
 	no s'.checkSum and
 	s'.receiverData = s.receiverData and
 	s'.senderData = s.senderData and
-	s'.response = NAK or
-	s'.response = NAKCorrupt
+	(s'.response = NAK or
+	s'.response = NAKCorrupt)
 }
+
+pred TestIncorrectChecksum[] {
+	first.Init
+	sendNextPacket[first,first.next]
+	incorrectChecksum[first.next, first.next.next]
+}
+
+run TestIncorrectChecksum for exactly 3 State, exactly 2 Packet 
 
 pred Trace {
 	first.Init

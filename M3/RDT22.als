@@ -1,20 +1,16 @@
 module project/m22
 open util/ordering [State]
 
-abstract sig Corruptitude {}
-one sig Corrupt, Saintly extends Corruptitude {}
-
-one sig Response {
-	isCorrupt: lone Corruptitude
+abstract sig Response {
 	seqNum: one SequenceNumber
 }
-//one sig ACK, NAK extends Response {}
+one sig ACK, ACKCorrupt extends Response {}
 
 abstract sig CheckSum {}
 one sig Correct, Error extends CheckSum {}
 
 abstract sig SequenceNumber {}
-one sig Zewo, Wun extends SequenceNumber {}
+one sig Zero, One extends SequenceNumber {}
 
 sig Packet {
 	seqNum: one SequenceNumber
@@ -33,31 +29,34 @@ sig State {
 	all p: Packet | p in senderData or p in receiverData or p = tempSentPacket
 }
 
+fact sequenceFollowed {
+	#(Packet - {p:Packet | p.seqNum = Zero}) = #(Packet - {p:Packet | p.seqNum = One}) or
+	#(Packet - {p:Packet | p.seqNum = Zero}) = #(Packet - {p:Packet | p.seqNum = One}) + 1
+}
+
 pred State.Init[] {
 	no this.receiverData
 	this.senderData = Packet
-	this.response = Response
-	this.response.seqNum = Zewo
-	this.response.isCorrupt = Saintly
+	this.response = ACK
+	this.response.seqNum = One
 	no this.sentPacket
 	no this.checkSum
 	no this.tempSentPacket
 }
 
+
 pred State.End[] {
 	no this.senderData and no this.sentPacket
 	all p:Packet | p in this.receiverData
-	this.response = Response
-	this.response.isCorrupt = Saintly
+	this.response = ACK
 }
-run End for exactly 1 State, exactly 3 Packet
 
 pred Step[s, s': State] {
 	no s.checkSum => populateSentPacket[s, s'] else extractSentPacket[s, s']
 }
 
 pred populateSentPacket[s, s': State] {
-	s.response.isCorrupt = Saintly => 
+	s.response = ACK => 
 		sendNextPacket[s,s']
 	else
 		resendCorruptAck[s,s']
@@ -65,19 +64,28 @@ pred populateSentPacket[s, s': State] {
 
 pred sendNextPacket[s,s': State] {
 	one p : s.senderData | 
-		s'.sentPacket.seqNum = nextSequence[s.sentPacket.seqNum] and
+		s'.sentPacket.seqNum = nextSequence[s.tempSentPacket.seqNum] and
 		s'.tempSentPacket = p and
 		s'.sentPacket = p and
 		s'.senderData = s.senderData - p and
 		s'.receiverData = s.receiverData and
+		no s'.response and
 		one c: CheckSum | s'.checkSum = c
 }
 
+pred TestSendNextPacket[] {
+	first.Init
+	sendNextPacket[first, first.next]
+}
+
+run TestSendNextPacket for exactly 2 State, exactly 2 Packet 
+
+
 fun nextSequence[s:SequenceNumber] : SequenceNumber {
-	s = Zewo => 
-		Wun
+	s = Zero => 
+		One
 	else
-		Zewo
+		Zero
 }
 
 pred resendCorruptAck[s, s': State] {
@@ -86,6 +94,15 @@ pred resendCorruptAck[s, s': State] {
 	s'.receiverData = s.receiverData and
 	one c: CheckSum | s'.checkSum = c
 }
+
+pred TestresendCorruptAck[] {
+	first.Init
+	sendNextPacket[first,first.next]
+	incorrectChecksum[first.next, first.next.next]
+	resendCorruptAck[first.next.next, first.next.next.next]
+}
+
+run TestresendCorruptAck for exactly 4 State, exactly 2 Packet 
 
 pred extractSentPacket[s, s': State] {
 	s.checkSum = Correct =>
@@ -98,18 +115,37 @@ pred correctChecksum[s,s': State] {
 	s'.receiverData = s.receiverData + s.sentPacket and
 	no s'.sentPacket and
 	s'.senderData = s.senderData and
+	s'.tempSentPacket = s.tempSentPacket and
 	no s'.checkSum and
-	no s'.tempSentPacket and
-	s'.response = ACK
+	(s'.response = ACK or
+	s'.response = ACKCorrupt)
 }
+
+pred TestCorrectChecksum[] {
+	first.Init
+	sendNextPacket[first,first.next]
+	correctChecksum[first.next, first.next.next]
+}
+
+run TestCorrectChecksum for exactly 3 State, exactly 2 Packet 
 
 pred incorrectChecksum[s,s':State] {
 	no s'.sentPacket and
+	s'.tempSentPacket = s.tempSentPacket and
 	no s'.checkSum and
 	s'.receiverData = s.receiverData and
 	s'.senderData = s.senderData and
-	s'.response = NAK
+	(s'.response = NAK or
+	s'.response = NAKCorrupt)
 }
+
+pred TestIncorrectChecksum[] {
+	first.Init
+	sendNextPacket[first,first.next]
+	incorrectChecksum[first.next, first.next.next]
+}
+
+run TestIncorrectChecksum for exactly 3 State, exactly 2 Packet 
 
 pred Trace {
 	first.Init
@@ -122,3 +158,4 @@ pred Trace {
 run Trace for exactly 5 State, exactly 2 Packet
 run Trace for exactly 7 State, exactly 2 Packet
 run Init for exactly 1 State, exactly 5 Packet
+run End for exactly 1 State, exactly 3 Packet
