@@ -29,19 +29,6 @@ sig State {
 	checkSum: lone CheckSum,
 	response: lone Response
 } 
-{
-	no p :Packet | p in senderData and p in receiverData
-	all p: Packet | p in senderData or p in receiverData or p = tempSentPacket
-}
-
-fact sequenceFollowed {
-	ACKOne.seqNum = One and
-	ACKZero.seqNum = Zero and 
-	ACKZeroCorrupt.seqNum = Zero and
-	ACKOneCorrupt.seqNum = One and
-	(#(Packet - {p:Packet | p.seqNum = Zero}) = #(Packet - {p:Packet | p.seqNum = One}) or
-	#(Packet - {p:Packet | p.seqNum = Zero}) = #(Packet - {p:Packet | p.seqNum = One}) + 1)
-}
 
 pred State.Init[] {
 	no this.receiverData
@@ -75,16 +62,18 @@ pred Step[s, s': State] {
 }
 
 pred populateSentPacket[s, s': State] {
-	(s.response = ACKOne or s.response = ACKZero) => 
-		(s.response.seqNum = s.tempSentPacket.seqNum => 
-			sendNextPacket[s,s']
+	no s.tempSentPacket =>
+		sendNextPacket[s,s']
+	else
+		((s.response = ACKOne or s.response = ACKZero) => 
+			(s.response.seqNum = s.tempSentPacket.seqNum => 
+				sendNextPacket[s,s']
+			else
+				resendPacket[s,s'])
 		else
 			resendPacket[s,s'])
-	else
-		resendPacket[s,s']
 }
 
-run testPopulateSentPacket for exactly 2 State, 1 Packet
 
 pred sendNextPacket[s,s': State] {
 	one p : s.senderData | 
@@ -214,7 +203,7 @@ pred testStep[] {
 
 run testStep for exactly 2 State, exactly 1 Packet
 run Trace for exactly 3 State, exactly 1 Packet
-//run Trace for exactly 5 State, exactly 2 Packet
-//run Trace for exactly 7 State, exactly 2 Packet
+run Trace for exactly 5 State, exactly 2 Packet
+run Trace for exactly 7 State, exactly 2 Packet
 run Init for exactly 1 State, exactly 1 Packet
 run End for exactly 1 State, exactly 1 Packet
